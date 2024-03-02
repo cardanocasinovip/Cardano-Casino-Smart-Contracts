@@ -8,7 +8,9 @@ pub type Datum {
     user_pkh: Hash<Blake2b_224, VerificationKey>,
     user_amount: Int,
     bank_amount: Int,
-    signature: ByteArray
+    random_number: ByteArray,
+    game: ByteArray,
+    timestamp: ByteArray,
   }
 }
 

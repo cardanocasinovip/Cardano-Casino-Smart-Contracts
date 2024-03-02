@@ -1,6 +1,5 @@
 use aiken/bytearray
 use aiken/dict
-use aiken/hash
 use aiken/list
 use aiken/string
 use aiken/transaction.{
@@ -24,6 +23,7 @@ validator {
 
     let val_hash = own_validator_script_address_hash(inputs, output_ref)
 
+    // Get inputs that have come from the script
     let script_inputs =
       list.filter(
         inputs,
@@ -32,15 +32,14 @@ validator {
         },
       )
 
+    // Filter script_inputs for inputs that have the Bank datum
     let bank_inputs =
       list.filter(
-        inputs,
-        fn(input) {
-          input.output.address.payment_credential == ScriptCredential(val_hash) && input.output.datum == InlineDatum(
-            types.Bank,
-          )
-        },
+        script_inputs,
+        fn(input) { input.output.datum == InlineDatum(types.Bank) },
       )
+
+    // Get outputs that are sent back to the script with the Bank datum
     let bank_outputs =
       list.filter(
         outputs,
@@ -50,6 +49,7 @@ validator {
           )
         },
       )
+    // Get the amount of ada in the Bank inputs
     let bank_input_ada =
       list.foldl(
         bank_inputs,
@@ -57,12 +57,14 @@ validator {
         fn(input, amnt) { amnt + value.lovelace_of(input.output.value) },
       )
 
+    // Get the amount of ada in the Bank outputs
     let bank_output_ada =
       list.foldl(
         bank_outputs,
         0,
         fn(output, amnt) { amnt + value.lovelace_of(output.value) },
       )
+
     when redeemer is {
       types.Update -> {
         let requests =
@@ -74,38 +76,18 @@ validator {
               expect datum: types.Datum = data
 
               when datum is {
-                types.UpdateRequest(_, user_amount, bank_amount, signature) -> {
-                  let message =
-                    string.join(
-                      [
-                        @"User:",
-                        string.from_int(user_amount),
-                        @"Bank:",
-                        string.from_int(bank_amount),
-                      ],
-                      @" ",
-                    )
-                  let correct_signature =
-                    signature == hash.sha3_256(
-                      bytearray.concat(
-                        string.to_bytearray(message),
-                        string.to_bytearray(
-                          @"afd8aa6a-710e-4e19-afdc-4a025025399c",
-                        ),
-                      ),
-                    )
-
-                  if correct_signature {
-                    True
-                  } else {
-                    fail @"Invalid signature in inputs"
-                  }
-                }
+                types.UpdateRequest(..) ->
+                  // Check the transaction has been verified by the Cardano Casino backend
+                  list.has(
+                    transaction.extra_signatories,
+                    #"b0a90114f918987398275998d2143e38d18bbeaf58772bf39f326e1c",
+                  )
                 _ -> False
               }
             },
           )
 
+        // Sort the requests so there are less outputs going back to the script
         let sorted_requests =
           list.foldl(
             requests,
@@ -114,7 +96,7 @@ validator {
               trace @"sorting requests"
               expect InlineDatum(data) = request.output.datum
               expect datum: types.Datum = data
-              expect types.UpdateRequest(user_pkh, user_amount, bank_amount, _) =
+              expect types.UpdateRequest(user_pkh, user_amount, bank_amount, ..) =
                 datum
               if dict.has_key(sorted, user_pkh) {
                 expect Some([user_amnt, bank_amnt]) =
@@ -139,6 +121,8 @@ validator {
               }
             },
           )
+
+        // Check that all input requests have been satisfied. 
         let all_users_updated =
           list.all(
             dict.to_list(sorted_requests),
@@ -149,7 +133,9 @@ validator {
                 list.filter(
                   inputs,
                   fn(input) {
-                    input.output.address.payment_credential == ScriptCredential(val_hash) && input.output.datum == InlineDatum(
+                    input.output.address.payment_credential == ScriptCredential(
+                      val_hash,
+                    ) && input.output.datum == InlineDatum(
                       types.Deposit { owner: user_pkh },
                     )
                   },
@@ -158,7 +144,9 @@ validator {
                 list.filter(
                   outputs,
                   fn(output) {
-                    output.address.payment_credential == ScriptCredential(val_hash) && output.datum == InlineDatum(
+                    output.address.payment_credential == ScriptCredential(
+                      val_hash,
+                    ) && output.datum == InlineDatum(
                       types.Deposit { owner: user_pkh },
                     )
                   },
@@ -203,28 +191,16 @@ validator {
       }
 
       types.Withdraw -> {
-        let script_inputs =
-          list.filter(
-            inputs,
-            fn(input) {
-              input.output.address.payment_credential == ScriptCredential(
-                val_hash,
-              )
-            },
-          )
-
         let user_withdrawal =
           list.all(
             script_inputs,
             fn(input) {
               expect InlineDatum(data) = input.output.datum
               expect datum: types.Datum = data
-              expect types.Deposit(_) = datum
+              expect types.Deposit(owner) = datum
 
-              list.has(
-                transaction.extra_signatories,
-                #"b0a90114f918987398275998d2143e38d18bbeaf58772bf39f326e1c",
-              ) == True
+              // Check the transaction was signed by the user who owns the funds
+              list.has(transaction.extra_signatories, owner) == True
             },
           )
         let bank_withdrawal =
@@ -234,6 +210,7 @@ validator {
               expect InlineDatum(data) = input.output.datum
               expect datum: types.Datum = data
 
+              // Check only Bank funds are withdrawn and it is signed by the CC wallet
               datum == types.Bank && list.has(
                 transaction.extra_signatories,
                 #"b0a90114f918987398275998d2143e38d18bbeaf58772bf39f326e1c",
