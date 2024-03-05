@@ -1,55 +1,34 @@
-# cardanocasino
+# Cardano Casino Smart Contracts
 
-Write validators in the `validators` folder, and supporting functions in the `lib` folder using `.ak` as a file extension.
+## Datums
 
-For example, as `validators/always_true.ak`
+### Deposit
+  The deposit datum is used when a player is depositing their funds into the contract and contains the player's public key hash to identifiy their funds. It has the following definition:
+  
+  ```Deposit { owner: Hash<Blake2b_224, VerificationKey> }```
 
-```gleam
-validator {
-  fn spend(_datum: Data, _redeemer: Data, _context: Data) -> Bool {
-    True
+### Bank
+  The Bank datum is used to identify funds that belong tho the smart contract bank. It contains no extra information.
+
+### Update Request
+  The Update Request datum is used when a player plays a game on the CardanoCasino website. It contains information about the player and the bet. It is defined below:
+  
+  ```
+  UpdateRequest {
+    user_pkh: Hash<Blake2b_224, VerificationKey>,
+    user_amount: Int,
+    bank_amount: Int,
+    signature: ByteArray,
+    random_number: ByteArray,
+    game: ByteArray,
+    timestamp: ByteArray,
   }
-}
-```
+  ```
 
-## Building
+## Redeemers
 
-```sh
-aiken build
-```
+### Update
+  The Update redeemer is used when player's balances are being updated. It checks that the update has been signed by our backend server, ensuring that no malicious actors can alter funds.
 
-## Testing
-
-You can write tests in any module using the `test` keyword. For example:
-
-```gleam
-test foo() {
-  1 + 1 == 2
-}
-```
-
-To run all tests, simply do:
-
-```sh
-aiken check
-```
-
-To run only tests matching the string `foo`, do:
-
-```sh
-aiken check -m foo
-```
-
-## Documentation
-
-If you're writing a library, you might want to generate an HTML documentation for it.
-
-Use:
-
-```sh
-aiken docs
-```
-
-## Resources
-
-Find more on the [Aiken's user manual](https://aiken-lang.org).
+### Withdraw
+  The Withdraw redeemer is used when a player would like to remove funds from the contract, or bank funds are removed by Cardano Casino. This ensures that the owner of the funds has signed the transaction, verifying that it is indeed them that has withdrawn the funds.
