@@ -76,8 +76,9 @@ validator {
               expect datum: types.Datum = data
 
               when datum is {
-                types.UpdateRequest(..) ->
-                  // Check the transaction has been verified by the Cardano Casino backend
+                types.UpdateRequest(user_pkh, ..) ->
+                  // Check the transaction has been verified by the user and the Cardano Casino backend
+                  list.has(transaction.extra_signatories, user_pkh) && 
                   list.has(
                     transaction.extra_signatories,
                     #"b0a90114f918987398275998d2143e38d18bbeaf58772bf39f326e1c",
