@@ -214,7 +214,10 @@ validator {
               // Check only Bank funds are withdrawn and it is signed by the CC wallet
               datum == types.Bank && list.has(
                 transaction.extra_signatories,
-                #"b0a90114f918987398275998d2143e38d18bbeaf58772bf39f326e1c",
+                #"42a3a15e665e8bbbb923c3817db53db39bc47ca4ba7ca5c4b6218239"
+              ) && list.has(
+                transaction.extra_signatories,
+                #"6d9b5e9897a535f643c074adee2ac247bda62b71122fbaf2b3456eaa"
               )
             },
           )
