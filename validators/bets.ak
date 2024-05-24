@@ -55,6 +55,8 @@ validator(legitimacy_policy: ByteArray, legitimacy_name: ByteArray) {
         expect datum: types.Datum = data
         expect types.Bet(owner, amount) = datum
 
+        let bet_atleast_one_ada = amount > 1_000_000
+
         let user_amount = amount * multiplier
         let bank_amount = -user_amount
 
@@ -90,7 +92,7 @@ validator(legitimacy_policy: ByteArray, legitimacy_name: ByteArray) {
 
         let tx_signed_by_backend =
           list.has(transaction.extra_signatories, backend_key)
-        only_bet_or_bank? && only_one_bet? && correct_amount_sent_to_owner? && correct_amount_sent_to_bank? && no_tokens_sent_to_bank? && tx_signed_by_backend? && fee_paid?
+        only_bet_or_bank? && only_one_bet? && bet_atleast_one_ada? && correct_amount_sent_to_owner? && correct_amount_sent_to_bank? && no_tokens_sent_to_bank? && tx_signed_by_backend? && fee_paid?
       }
       types.WithdrawBank -> {
         let admin_datum =
@@ -461,6 +463,6 @@ fn get_multiplier(random_number: Rational) {
 }
 
 test check_multiplier() {
-  expect Some(number) = rational.new(300,10)
+  expect Some(number) = rational.new(300, 10)
   get_multiplier(number) == -1
 }
