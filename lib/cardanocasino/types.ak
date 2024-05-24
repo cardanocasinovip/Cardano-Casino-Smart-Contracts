@@ -23,3 +23,11 @@ pub type Redeemer {
   // redeemer to update the admin data.
   UpdateAdminData
 }
+
+pub type Range {
+  multiplier: Int,
+  lower_numerator: Int,
+  lower_denominator: Int,
+  upper_numerator: Int,
+  upper_denominator: Int,
+}
