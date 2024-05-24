@@ -378,7 +378,7 @@ fn get_multiplier(random_number: Rational, intervals: List<types.Range>) -> Int 
           rational.new(range.upper_numerator, range.upper_denominator)
         rational.compare_with(random_number, >, interval_lower) && rational.compare_with(
           random_number,
-          >=,
+          <=,
           interval_upper,
         )
       },
@@ -386,4 +386,12 @@ fn get_multiplier(random_number: Rational, intervals: List<types.Range>) -> Int 
 
   //return the multiplier
   range.multiplier
+}
+
+test check_multiplier() {
+  let intervals = [types.Range {multiplier: -1, lower_numerator: 0, lower_denominator: 1, upper_numerator: 5, upper_denominator: 10}, types.Range {multiplier: 2, lower_numerator: 5, lower_denominator: 10, upper_numerator: 1, upper_denominator: 1}]
+  
+  expect Some(test_rn) = rational.new(6,10)
+  
+  get_multiplier(test_rn, intervals) == 2
 }
