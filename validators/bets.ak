@@ -161,7 +161,10 @@ validator(
                   output.value,
                   legitimacy_policy,
                   legitimacy_name,
-                ) == 1 && value.policies(output.value) == [legitimacy_policy]
+                ) == 1 && value.policies(output.value) == [
+                  #"",
+                  legitimacy_policy,
+                ]
               },
             )
           let only_one_script_output = list.length(script_outputs) == 1
@@ -179,6 +182,7 @@ validator(
                       legitimacy_policy,
                       legitimacy_name,
                     ) == 1 && value.policies(output.value) == [
+                      #"",
                       legitimacy_policy,
                     ]
                   _ -> False
@@ -331,7 +335,10 @@ fn check_tokens_sent_to_bank(
         )
       },
     )
-  list.all(outputs_to_bank, fn(output) { value.policies(output.value) == [] })
+  list.all(
+    outputs_to_bank,
+    fn(output) { value.policies(output.value) == [#""] },
+  )
 }
 
 fn get_admin_data(
