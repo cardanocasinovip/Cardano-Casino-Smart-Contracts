@@ -102,9 +102,12 @@ validator(
           let fee_paid =
             lovelace_sent_to_address(inputs, outputs, fee_address) >= actual_fee
 
+          let bet_utxo_correct_amount =
+            value.lovelace_of(bet_input.output.value) >= amount + actual_fee
+
           let tx_signed_by_backend =
             list.has(transaction.extra_signatories, backend_key)
-          only_bet_or_bank? && only_one_bet? && bet_atleast_one_ada? && correct_amount_sent_to_owner? && correct_amount_sent_to_bank? && no_tokens_sent_to_bank? && tx_signed_by_backend? && fee_paid? && no_other_scripts?
+          only_bet_or_bank? && only_one_bet? && bet_atleast_one_ada? && correct_amount_sent_to_owner? && correct_amount_sent_to_bank? && no_tokens_sent_to_bank? && tx_signed_by_backend? && fee_paid? && no_other_scripts? && bet_utxo_correct_amount?
         }
         types.WithdrawBank -> {
           let admin_datum =
