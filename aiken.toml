@@ -1,5 +1,5 @@
 name = "astrodev/cardanocasino"
-version = "0.0.0"
+version = "1.0.1"
 license = "Apache-2.0"
 description = "Aiken contracts for project 'astrodev/cardanocasino'"
 
@@ -10,5 +10,5 @@ platform = "github"
 
 [[dependencies]]
 name = "aiken-lang/stdlib"
-version = "1.8.0"
+version = "1.9.0"
 source = "github"

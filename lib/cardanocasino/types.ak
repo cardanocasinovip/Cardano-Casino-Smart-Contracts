@@ -25,7 +25,8 @@ pub type Redeemer {
 }
 
 pub type Range {
-  multiplier: Int,
+  multiplier_numerator: Int,
+  multiplier_denominator: Int,
   lower_numerator: Int,
   lower_denominator: Int,
   upper_numerator: Int,
