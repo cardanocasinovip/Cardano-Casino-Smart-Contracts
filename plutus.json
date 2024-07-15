@@ -2,7 +2,7 @@
   "preamble": {
     "title": "astrodev/cardanocasino",
     "description": "Aiken contracts for project 'astrodev/cardanocasino'",
-    "version": "0.0.0",
+    "version": "1.0.1",
     "plutusVersion": "v2",
     "compiler": {
       "name": "Aiken",
