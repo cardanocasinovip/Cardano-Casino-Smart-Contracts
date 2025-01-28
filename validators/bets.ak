@@ -1,4 +1,4 @@
-use aiken/cbor
+// use aiken/cbor
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
@@ -93,8 +93,8 @@ validator cardanocasino(
               val_hash,
             )
           let correct_amount_sent_to_bank = amount_sent_to_bank >= bank_amount
-          trace cbor.diagnostic(amount_sent_to_bank)
-          trace cbor.diagnostic(bank_amount)
+          // trace cbor.diagnostic(amount_sent_to_bank)
+          // trace cbor.diagnostic(bank_amount)
           let valid_tokens_sent_to_bank =
             check_tokens_sent_to_bank(
               outputs,
@@ -516,7 +516,7 @@ fn get_multiplier(
   random_number: Rational,
   intervals: List<types.Range>,
 ) -> Rational {
-  trace cbor.diagnostic(intervals)
+  // trace cbor.diagnostic(intervals)
 
   expect Some(range) =
     list.find(
