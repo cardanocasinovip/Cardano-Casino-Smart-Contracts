@@ -1,13 +1,13 @@
-use aiken/hash.{Blake2b_224, Hash}
-use aiken/transaction/credential.{Address, VerificationKey}
+use aiken/crypto.{VerificationKeyHash}
+use cardano/address.{Address}
 
 pub type Datum {
   // utxo containing the administrative data such as admin keys
   AdminData {
-    admin_keys: List<Hash<Blake2b_224, VerificationKey>>,
+    admin_keys: List<VerificationKeyHash>,
     fee: Int,
     fee_address: Address,
-    backend_key: Hash<Blake2b_224, VerificationKey>,
+    backend_key: VerificationKeyHash,
   }
   //bank utxos
   Bank

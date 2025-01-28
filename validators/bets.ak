@@ -1,31 +1,29 @@
 use aiken/cbor
-use aiken/hash.{Blake2b_224, Hash}
-use aiken/list
+use aiken/collection/dict
+use aiken/collection/list
+use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/math/rational.{Rational}
-use aiken/transaction.{
-  InlineDatum, Input, Output, OutputReference, ScriptContext, Spend, Transaction,
+use cardano/address.{Address, Script, VerificationKey}
+use cardano/assets
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction,
 } as tx
-use aiken/transaction/credential.{
-  Address, Script, ScriptCredential, VerificationKey, VerificationKeyCredential,
-}
-use aiken/transaction/value
 use cardanocasino/types
 
-validator(
+validator cardanocasino(
   legitimacy_policy: ByteArray,
   legitimacy_name: ByteArray,
   intervals: List<types.Range>,
+  game_token_policy: ByteArray,
+  game_token_name: ByteArray,
 ) {
-  fn spend(
-    _datum: types.Datum,
+  spend(
+    _datum: Option<types.Datum>,
     redeemer: types.Redeemer,
-    ctx: ScriptContext,
-  ) -> Bool {
-    let ScriptContext { transaction, purpose } = ctx
-
-    expect Spend(output_ref) = purpose
-
-    let Transaction { inputs, reference_inputs, outputs, .. } = transaction
+    output_ref: OutputReference,
+    self: Transaction,
+  ) {
+    let Transaction { inputs, reference_inputs, outputs, .. } = self
 
     let val_hash = own_validator_script_address_hash(inputs, output_ref)
 
@@ -64,7 +62,7 @@ validator(
           expect datum: types.Datum = data
           expect types.Bet(owner, amount) = datum
 
-          let bet_atleast_one_ada = amount >= 1_000_000
+          let bet_atleast_minimum = check_bet_minimum(game_token_policy, amount)
 
           let user_amount =
             amount + rational.floor(
@@ -76,17 +74,34 @@ validator(
           let bank_amount = -user_amount + amount
 
           let amount_sent_to_bet_owner =
-            lovelace_sent_to_address(inputs, outputs, owner)
+            tokens_sent_to_address(
+              inputs,
+              outputs,
+              game_token_policy,
+              game_token_name,
+              owner,
+            )
           let correct_amount_sent_to_owner =
             amount_sent_to_bet_owner >= user_amount
 
           let amount_sent_to_bank =
-            lovelace_sent_to_bank(inputs, outputs, val_hash)
+            tokens_sent_to_bank(
+              inputs,
+              outputs,
+              game_token_policy,
+              game_token_name,
+              val_hash,
+            )
           let correct_amount_sent_to_bank = amount_sent_to_bank >= bank_amount
           trace cbor.diagnostic(amount_sent_to_bank)
           trace cbor.diagnostic(bank_amount)
-          let no_tokens_sent_to_bank =
-            check_tokens_sent_to_bank(outputs, val_hash)
+          let valid_tokens_sent_to_bank =
+            check_tokens_sent_to_bank(
+              outputs,
+              game_token_policy,
+              game_token_name,
+              val_hash,
+            )
 
           let admin_datum =
             get_admin_data(
@@ -111,11 +126,11 @@ validator(
             lovelace_sent_to_address(inputs, outputs, fee_address) >= actual_fee
 
           let bet_utxo_correct_amount =
-            value.lovelace_of(bet_input.output.value) >= amount + actual_fee
+            assets.lovelace_of(bet_input.output.value) >= get_min_utxo_lovelace(game_token_policy, amount, actual_fee)
 
           let tx_signed_by_backend =
-            list.has(transaction.extra_signatories, backend_key)
-          only_bet_or_bank? && only_one_bet? && bet_atleast_one_ada? && correct_amount_sent_to_owner? && correct_amount_sent_to_bank? && no_tokens_sent_to_bank? && tx_signed_by_backend? && fee_paid? && no_other_scripts? && bet_utxo_correct_amount?
+            list.has(self.extra_signatories, backend_key)
+          only_bet_or_bank? && only_one_bet? && bet_atleast_minimum? && correct_amount_sent_to_owner? && correct_amount_sent_to_bank? && valid_tokens_sent_to_bank? && tx_signed_by_backend? && fee_paid? && no_other_scripts? && bet_utxo_correct_amount?
         }
         types.WithdrawBank -> {
           let admin_datum =
@@ -141,7 +156,7 @@ validator(
               },
             )
 
-          let quorum_reached = check_quorum(admin_keys, transaction)
+          let quorum_reached = check_quorum(admin_keys, self)
           only_bank_inputs && quorum_reached
         }
         types.UpdateAdminData -> {
@@ -156,22 +171,21 @@ validator(
               legitimacy_name,
             )
           expect types.AdminData(admin_keys, ..) = admin_datum
-          let quorum_reached = check_quorum(admin_keys, transaction)
+          let quorum_reached = check_quorum(admin_keys, self)
 
           let script_outputs =
             list.filter(
               outputs,
               fn(output) {
                 output.address == Address {
-                  payment_credential: ScriptCredential(val_hash),
+                  payment_credential: Script(val_hash),
                   stake_credential: None,
-                } && value.quantity_of(
+                } && assets.quantity_of(
                   output.value,
                   legitimacy_policy,
                   legitimacy_name,
-                ) == 1 && value.policies(output.value) == [
-                  #"",
-                  legitimacy_policy,
+                ) == 1 && assets.policies(output.value) == [
+                  #"", legitimacy_policy,
                 ]
               },
             )
@@ -185,13 +199,12 @@ validator(
                 expect datum: types.Datum = data
                 when datum is {
                   types.AdminData(..) ->
-                    value.quantity_of(
+                    assets.quantity_of(
                       output.value,
                       legitimacy_policy,
                       legitimacy_name,
-                    ) == 1 && value.policies(output.value) == [
-                      #"",
-                      legitimacy_policy,
+                    ) == 1 && assets.policies(output.value) == [
+                      #"", legitimacy_policy,
                     ]
                   _ -> False
                 }
@@ -205,29 +218,28 @@ validator(
       True
     }
   }
+
+  else(_) {
+    fail
+  }
 }
 
 fn own_validator_script_address_hash(
   inputs: List<Input>,
   output_reference: OutputReference,
-) -> Hash<Blake2b_224, Script> {
+) -> ScriptHash {
   expect Some(input) =
     list.find(inputs, fn(input) { input.output_reference == output_reference })
-  expect ScriptCredential(hash) = input.output.address.payment_credential
+  expect Script(hash) = input.output.address.payment_credential
 
   hash
 }
 
-fn get_script_inputs(
-  inputs: List<Input>,
-  val_hash: Hash<Blake2b_224, Script>,
-) -> List<Input> {
+fn get_script_inputs(inputs: List<Input>, val_hash: ScriptHash) -> List<Input> {
   let script_inputs =
     list.filter(
       inputs,
-      fn(input) {
-        input.output.address.payment_credential == ScriptCredential(val_hash)
-      },
+      fn(input) { input.output.address.payment_credential == Script(val_hash) },
     )
 
   script_inputs
@@ -235,15 +247,15 @@ fn get_script_inputs(
 
 fn check_no_other_scripts(
   inputs: List<Input>,
-  val_hash: Hash<Blake2b_224, Script>,
-  backend_key: Hash<Blake2b_224, VerificationKey>,
+  val_hash: ScriptHash,
+  backend_key: VerificationKeyHash,
 ) -> Bool {
   list.all(
     inputs,
     fn(input) {
-      input.output.address.payment_credential == VerificationKeyCredential(
-        backend_key,
-      ) || input.output.address.payment_credential == ScriptCredential(val_hash)
+      input.output.address.payment_credential == VerificationKey(backend_key) || input.output.address.payment_credential == Script(
+        val_hash,
+      )
     },
   )
 }
@@ -275,7 +287,7 @@ fn lovelace_sent_to_address(
     list.foldl(
       inputs_from_address,
       0,
-      fn(input, total) { total + value.lovelace_of(input.output.value) },
+      fn(input, total) { total + assets.lovelace_of(input.output.value) },
     )
   let outputs_to_address =
     list.filter(outputs, fn(output) { output.address == address })
@@ -284,83 +296,168 @@ fn lovelace_sent_to_address(
     list.foldl(
       outputs_to_address,
       0,
-      fn(output, total) { total + value.lovelace_of(output.value) },
+      fn(output, total) { total + assets.lovelace_of(output.value) },
     )
 
   ada_to_address - ada_from_address
 }
 
-fn lovelace_sent_to_bank(
+fn tokens_sent_to_address(
   inputs: List<Input>,
   outputs: List<Output>,
-  val_hash: Hash<Blake2b_224, Script>,
+  game_token_policy: ByteArray,
+  game_token_name: ByteArray,
+  address: Address,
+) -> Int {
+  let inputs_from_address =
+    list.filter(inputs, fn(input) { input.output.address == address })
+  let tokens_from_address =
+    list.foldl(
+      inputs_from_address,
+      0,
+      fn(input, total) {
+        total + assets.quantity_of(
+          input.output.value,
+          game_token_policy,
+          game_token_name,
+        )
+      },
+    )
+  let outputs_to_address =
+    list.filter(outputs, fn(output) { output.address == address })
+
+  let tokens_to_address =
+    list.foldl(
+      outputs_to_address,
+      0,
+      fn(output, total) {
+        total + assets.quantity_of(
+          output.value,
+          game_token_policy,
+          game_token_name,
+        )
+      },
+    )
+
+  tokens_to_address - tokens_from_address
+}
+
+fn tokens_sent_to_bank(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  game_token_policy: ByteArray,
+  game_token_name: ByteArray,
+  val_hash: ScriptHash,
 ) -> Int {
   let inputs_from_bank =
     list.filter(
       inputs,
       fn(input) {
-        input.output.address.payment_credential == ScriptCredential(val_hash) && input.output.datum == InlineDatum(
+        input.output.address.payment_credential == Script(val_hash) && input.output.datum == InlineDatum(
           types.Bank,
         )
       },
     )
-  let ada_from_bank =
+  let tokens_from_bank =
     list.foldl(
       inputs_from_bank,
       0,
-      fn(input, total) { total + value.lovelace_of(input.output.value) },
+      fn(input, total) {
+        total + assets.quantity_of(
+          input.output.value,
+          game_token_policy,
+          game_token_name,
+        )
+      },
     )
   let outputs_to_bank =
     list.filter(
       outputs,
       fn(output) {
-        output.address.payment_credential == ScriptCredential(val_hash) && output.datum == InlineDatum(
+        output.address.payment_credential == Script(val_hash) && output.datum == InlineDatum(
           types.Bank,
         )
       },
     )
 
-  let ada_to_bank =
+  let tokens_to_bank =
     list.foldl(
       outputs_to_bank,
       0,
-      fn(output, total) { total + value.lovelace_of(output.value) },
+      fn(output, total) {
+        total + assets.quantity_of(
+          output.value,
+          game_token_policy,
+          game_token_name,
+        )
+      },
     )
 
-  ada_to_bank - ada_from_bank
+  tokens_to_bank - tokens_from_bank
 }
 
 fn check_tokens_sent_to_bank(
   outputs: List<Output>,
-  val_hash: Hash<Blake2b_224, Script>,
+  game_token_policy: ByteArray,
+  game_token_name: ByteArray,
+  val_hash: ScriptHash,
 ) {
   let outputs_to_bank =
     list.filter(
       outputs,
       fn(output) {
-        output.address.payment_credential == ScriptCredential(val_hash) && output.datum == InlineDatum(
+        output.address.payment_credential == Script(val_hash) && output.datum == InlineDatum(
           types.Bank,
         )
       },
     )
   list.all(
     outputs_to_bank,
-    fn(output) { value.policies(output.value) == [#""] },
+    fn(output) {
+      let only_expected_policies =
+        assets.policies(output.value) == list.unique([#"", game_token_policy])
+
+      let token_names =
+        assets.tokens(output.value, game_token_policy)
+          |> dict.keys()
+      let only_expected_tokens = token_names == [game_token_name]
+
+      only_expected_policies? && only_expected_tokens?
+    },
   )
+}
+
+fn get_min_utxo_lovelace(
+  game_token_policy: ByteArray,
+  amount: Int,
+  fee_amount: Int
+) -> Int {
+  when game_token_policy is {
+    "" -> amount + fee_amount
+    _ -> fee_amount
+  }
+}
+
+fn check_bet_minimum(
+  game_token_policy: ByteArray,
+  amount: Int
+) -> Bool {
+  when game_token_policy is {
+    "" -> amount >= 1_000_000
+    _ -> amount >= 1
+  }
 }
 
 fn get_admin_data(
   inputs: List<Input>,
-  val_hash: Hash<Blake2b_224, Script>,
+  val_hash: ScriptHash,
   legitimacy_policy: ByteArray,
   legitimacy_name: ByteArray,
 ) -> types.Datum {
   let script_inputs =
     list.filter(
       inputs,
-      fn(input) {
-        input.output.address.payment_credential == ScriptCredential(val_hash)
-      },
+      fn(input) { input.output.address.payment_credential == Script(val_hash) },
     )
 
   let admin_data_inputs =
@@ -371,7 +468,7 @@ fn get_admin_data(
         expect datum: types.Datum = data
         when datum is {
           types.AdminData(..) ->
-            value.quantity_of(
+            assets.quantity_of(
               input.output.value,
               legitimacy_policy,
               legitimacy_name,
@@ -394,10 +491,7 @@ fn get_admin_data(
   }
 }
 
-fn check_quorum(
-  admin_keys: List<Hash<Blake2b_224, VerificationKey>>,
-  transaction: Transaction,
-) {
+fn check_quorum(admin_keys: List<VerificationKeyHash>, transaction: Transaction) {
   let quorum_amount = list.length(admin_keys) / 2 + 1
   let signature_amounts =
     list.foldl(
@@ -422,6 +516,8 @@ fn get_multiplier(
   random_number: Rational,
   intervals: List<types.Range>,
 ) -> Rational {
+  trace cbor.diagnostic(intervals)
+
   expect Some(range) =
     list.find(
       intervals,
