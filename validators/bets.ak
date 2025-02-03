@@ -115,18 +115,11 @@ validator cardanocasino(
           let no_other_scripts =
             check_no_other_scripts(inputs, val_hash, backend_key)
 
-          expect Some(fee_rational) = rational.new(fee, 10000)
-
-          let amount_rational = rational.from_int(amount)
-
-          let fee_amount_rational = rational.mul(fee_rational, amount_rational)
-          let actual_fee = rational.ceil(fee_amount_rational)
-
           let fee_paid =
-            lovelace_sent_to_address(inputs, outputs, fee_address) >= actual_fee
+            lovelace_sent_to_address(inputs, outputs, fee_address) >= fee
 
           let bet_utxo_correct_amount =
-            assets.lovelace_of(bet_input.output.value) >= get_min_utxo_lovelace(game_token_policy, amount, actual_fee)
+            assets.lovelace_of(bet_input.output.value) >= get_min_utxo_lovelace(game_token_policy, amount, fee)
 
           let tx_signed_by_backend =
             list.has(self.extra_signatories, backend_key)
@@ -434,7 +427,7 @@ fn get_min_utxo_lovelace(
 ) -> Int {
   when game_token_policy is {
     "" -> amount + fee_amount
-    _ -> fee_amount
+    _ -> fee_amount + 1_000_000
   }
 }
 
